@@ -1,0 +1,7 @@
+*.exe
+body.exe
+*.o
+*.dll
+raylib.dll
+libraylib.dll
+.vscode/
