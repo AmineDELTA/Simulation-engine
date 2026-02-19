@@ -7,32 +7,85 @@
 int main(void)
 {
     const int screenWidth = 1600;
-    const int screenHeight = 1200;
+    const int screenHeight = 1000;
 
     InitWindow(screenWidth, screenHeight, "N-Body Simulation");
 
-    double G = 100.0;
-    double delta_time = 0.1;
+    double G = 60.0;
     Body bodies[MAX_BODIES];
     int count = 0;
 
-    // Large central body
-    bodies[count].position = (vector){500, 400};
-    bodies[count].velocity = (vector){0, 0};
-    bodies[count].mass = 10200.0f;
-    bodies[count].color = GREEN;
-    count++;
+    // Define galaxy centers and velocities
+    vector leftGalaxyCenter = {400, 600};
+    vector leftGalaxyVelocity = {8, 0}; // Moving right
 
-    for (int i = 1; i < 3500; i++)
+    vector rightGalaxyCenter = {1200, 600};
+    vector rightGalaxyVelocity = {-8, 0}; // Moving left
+
+    int particlesPerGalaxy = 250;
+    double centralMass = 500.0;
+
+    double simulationSpeed = 1.0; // 1.0 = normal, 2.0 = 2x speed, 0.5 = slow-mo
+
+    // === LEFT GALAXY (Blue) ===
+    for (int i = 0; i < particlesPerGalaxy; i++)
     {
-        bodies[i].position.x = GetRandomValue(300, screenWidth - 300);
-        bodies[i].position.y = GetRandomValue(200, screenHeight - 200);
+        if (i == 0)
+        {
+            // Central massive body at exact center
+            bodies[count].position = leftGalaxyCenter;
+            bodies[count].velocity = leftGalaxyVelocity; // Only galaxy drift, no orbit
+            bodies[count].mass = centralMass;
+            bodies[count].color = BLUE;
+        }
+        else
+        {
+            // Orbiting particles
+            double angle = (double)GetRandomValue(0, 359) * (PI / 180.0);
+            double radius = (double)GetRandomValue(80, 250);
 
-        bodies[i].velocity.x = (float)GetRandomValue(-5, 50) / 10.0f;
-        bodies[i].velocity.y = (float)GetRandomValue(-5, 10) / 10.0f;
+            bodies[count].position.x = leftGalaxyCenter.x + cos(angle) * radius;
+            bodies[count].position.y = leftGalaxyCenter.y + sin(angle) * radius;
 
-        bodies[i].mass = (float)GetRandomValue(10, 40);
-        bodies[i].color = WHITE;
+            double orbitalSpeed = sqrt(G * centralMass / radius) * 0.95; // Was 0.8
+
+            bodies[count].velocity.x = leftGalaxyVelocity.x + (-sin(angle) * orbitalSpeed);
+            bodies[count].velocity.y = leftGalaxyVelocity.y + (cos(angle) * orbitalSpeed);
+
+            bodies[count].mass = (double)GetRandomValue(1, 3) * 0.1; // Very light
+            bodies[count].color = (Color){100, 150, 255, 255};
+        }
+        count++;
+    }
+
+    // === RIGHT GALAXY (Red) ===
+    for (int i = 0; i < particlesPerGalaxy; i++)
+    {
+        if (i == 0)
+        {
+            // Central massive body at exact center
+            bodies[count].position = rightGalaxyCenter;
+            bodies[count].velocity = rightGalaxyVelocity;
+            bodies[count].mass = centralMass;
+            bodies[count].color = RED;
+        }
+        else
+        {
+            // Orbiting particles
+            double angle = (double)GetRandomValue(0, 359) * (PI / 180.0);
+            double radius = (double)GetRandomValue(80, 250);
+
+            bodies[count].position.x = rightGalaxyCenter.x + cos(angle) * radius;
+            bodies[count].position.y = rightGalaxyCenter.y + sin(angle) * radius;
+
+            double orbitalSpeed = sqrt(G * centralMass / radius) * 0.95;
+
+            bodies[count].velocity.x = rightGalaxyVelocity.x + (-sin(angle) * orbitalSpeed);
+            bodies[count].velocity.y = rightGalaxyVelocity.y + (cos(angle) * orbitalSpeed);
+
+            bodies[count].mass = (double)GetRandomValue(1, 3) * 0.1;
+            bodies[count].color = (Color){255, 100, 100, 255};
+        }
         count++;
     }
 
@@ -40,13 +93,27 @@ int main(void)
 
     while (!WindowShouldClose())
     {
+        // Keyboard controls for simulation speed
+        if (IsKeyPressed(KEY_EQUAL) || IsKeyPressed(KEY_KP_ADD))
+            simulationSpeed += 0.25;
+        if (IsKeyPressed(KEY_MINUS) || IsKeyPressed(KEY_KP_SUBTRACT))
+            simulationSpeed = fmax(0.1, simulationSpeed - 0.25);
+        if (IsKeyPressed(KEY_R))
+            simulationSpeed = 1.0; // Reset to normal
+
+        // Use dynamic time step based on actual frame time
+        double frameTime = GetFrameTime();
+        if (frameTime > 0.02)
+            frameTime = 0.02; // Change from 0.05 to 0.02
+        double delta_time = frameTime * simulationSpeed;
 
         for (int i = 0; i < count; i++)
         {
             bodies[i].force = (vector){0, 0};
         }
 
-        Node *root = create_node((Rectangle){0, 0, screenWidth, screenHeight});
+        // Expanded world bounds so particles don't disappear off-screen
+        Node *root = create_node((Rectangle){-2000, -2000, 5600, 5200});
         for (int i = 0; i < count; i++)
         {
             insert_body(root, &bodies[i]);
@@ -74,13 +141,39 @@ int main(void)
 
         ClearBackground(BLACK);
 
+        // all bodies with glow effect
         for (int i = 0; i < count; i++)
         {
-            // we are using sqrt scale so big masses look noticeably larger.
+            // Calculate size based on mass
             float radius = 3.0f + (float)sqrtf((float)bodies[i].mass) * 0.35f;
+            Vector2 pos = {(float)bodies[i].position.x, (float)bodies[i].position.y};
 
-            DrawCircleV((Vector2){(float)bodies[i].position.x, (float)bodies[i].position.y}, radius, bodies[i].color);
+            // Calculate velocity magnitude for color intensity
+            double speed = bodies[i].velocity.x * bodies[i].velocity.x +
+                           bodies[i].velocity.y * bodies[i].velocity.y;
+            float brightness = fmin(1.0f, (float)(speed / 1000.0f)); // Normalize to 0-1
+
+            // Create glowing effect with gradient
+            Color glowColor = bodies[i].color;
+            glowColor.a = 40; // transparent outer glow
+            DrawCircleGradient((int)pos.x, (int)pos.y, radius * 1.5f,
+                               (Color){0, 0, 0, 0}, glowColor);
+
+            // Brighten color based on velocity
+            Color coreColor = bodies[i].color;
+            coreColor.r = (unsigned char)fmin(255, coreColor.r + brightness * 80);
+            coreColor.g = (unsigned char)fmin(255, coreColor.g + brightness * 80);
+            coreColor.b = (unsigned char)fmin(255, coreColor.b + brightness * 80);
+
+            // Draw main body
+            DrawCircleV(pos, radius, coreColor);
         }
+
+        // UI Overlay
+        DrawText(TextFormat("Bodies: %d", count), 10, 10, 20, WHITE);
+        DrawText(TextFormat("FPS: %d", GetFPS()), 10, 35, 20, WHITE);
+        DrawText(TextFormat("Speed: %.1fx", simulationSpeed), 10, 60, 20, WHITE);
+        DrawText("Press +/- to adjust speed", 10, 85, 16, WHITE);
 
         EndDrawing();
         free_tree(root);

@@ -133,7 +133,7 @@ void calculate_force_from_tree(Node *tree, Body *body, double G, double theta)
         return;
 
     vector direction = subtract_vectors(tree->centerOfMass, body->position);
-    double distance = sqrt(direction.x * direction.x + direction.y * direction.y + 25.0);
+    double distance = sqrt(direction.x * direction.x + direction.y * direction.y + 100.0);
 
     if (tree->body == body)
         return;
