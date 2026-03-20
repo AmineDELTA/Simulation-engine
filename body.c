@@ -2,6 +2,7 @@
 #include "vector.h"
 #include <math.h>
 #include <stddef.h>
+#include <stdio.h>
 #define MAX_BODIES 10000
 
 int main(void)
@@ -10,44 +11,47 @@ int main(void)
     const int screenHeight = 1000;
 
     InitWindow(screenWidth, screenHeight, "N-Body Simulation");
+    if (!IsWindowReady())
+    {
+        fprintf(stderr, "Failed to initialize graphics window. Check GPU/OpenGL support and display session.\n");
+        return 1;
+    }
 
     double G = 60.0;
-    Body bodies[MAX_BODIES];
+    static Body bodies[MAX_BODIES];
     int count = 0;
 
-    // Define galaxy centers and velocities
     vector leftGalaxyCenter = {400, 600};
-    vector leftGalaxyVelocity = {8, 0}; // Moving right
+    vector leftGalaxyVelocity = {8, 0};
 
     vector rightGalaxyCenter = {1200, 600};
-    vector rightGalaxyVelocity = {-8, 0}; // Moving left
+    vector rightGalaxyVelocity = {-8, 0};
 
-    int particlesPerGalaxy = 250;
+    int particlesPerGalaxy = 1500;
     double centralMass = 500.0;
 
-    double simulationSpeed = 1.0; // 1.0 = normal, 2.0 = 2x speed, 0.5 = slow-mo
+    double simulationSpeed = 1.0;
 
     // === LEFT GALAXY (Blue) ===
     for (int i = 0; i < particlesPerGalaxy; i++)
     {
         if (i == 0)
         {
-            // Central massive body at exact center
+            // Central mass moves only with galaxy drift.
             bodies[count].position = leftGalaxyCenter;
-            bodies[count].velocity = leftGalaxyVelocity; // Only galaxy drift, no orbit
+            bodies[count].velocity = leftGalaxyVelocity;
             bodies[count].mass = centralMass;
             bodies[count].color = BLUE;
         }
         else
         {
-            // Orbiting particles
             double angle = (double)GetRandomValue(0, 359) * (PI / 180.0);
             double radius = (double)GetRandomValue(80, 250);
 
             bodies[count].position.x = leftGalaxyCenter.x + cos(angle) * radius;
             bodies[count].position.y = leftGalaxyCenter.y + sin(angle) * radius;
 
-            double orbitalSpeed = sqrt(G * centralMass / radius) * 0.95; // Was 0.8
+            double orbitalSpeed = sqrt(G * centralMass / radius) * 0.95;
 
             bodies[count].velocity.x = leftGalaxyVelocity.x + (-sin(angle) * orbitalSpeed);
             bodies[count].velocity.y = leftGalaxyVelocity.y + (cos(angle) * orbitalSpeed);
@@ -63,7 +67,7 @@ int main(void)
     {
         if (i == 0)
         {
-            // Central massive body at exact center
+            // Central mass moves only with galaxy drift.
             bodies[count].position = rightGalaxyCenter;
             bodies[count].velocity = rightGalaxyVelocity;
             bodies[count].mass = centralMass;
@@ -89,11 +93,13 @@ int main(void)
         count++;
     }
 
-    SetTargetFPS(60);
+    SetTargetFPS(200);
+
+    static cArena arena = {0}; // static storage avoids stack overflow
 
     while (!WindowShouldClose())
     {
-        // Keyboard controls for simulation speed
+        // Runtime speed controls.
         if (IsKeyPressed(KEY_EQUAL) || IsKeyPressed(KEY_KP_ADD))
             simulationSpeed += 0.25;
         if (IsKeyPressed(KEY_MINUS) || IsKeyPressed(KEY_KP_SUBTRACT))
@@ -112,11 +118,43 @@ int main(void)
             bodies[i].force = (vector){0, 0};
         }
 
-        // Expanded world bounds so particles don't disappear off-screen
-        Node *root = create_node((Rectangle){-2000, -2000, 5600, 5200});
+        // Tight bounds cut tree depth in empty space and reduce traversal work.
+        double minX = bodies[0].position.x;
+        double maxX = bodies[0].position.x;
+        double minY = bodies[0].position.y;
+        double maxY = bodies[0].position.y;
+        for (int i = 1; i < count; i++)
+        {
+            if (bodies[i].position.x < minX)
+                minX = bodies[i].position.x;
+            if (bodies[i].position.x > maxX)
+                maxX = bodies[i].position.x;
+            if (bodies[i].position.y < minY)
+                minY = bodies[i].position.y;
+            if (bodies[i].position.y > maxY)
+                maxY = bodies[i].position.y;
+        }
+
+        double padding = 200.0;
+        float worldX = (float)(minX - padding);
+        float worldY = (float)(minY - padding);
+        float worldW = (float)((maxX - minX) + padding * 2.0);
+        float worldH = (float)((maxY - minY) + padding * 2.0);
+        if (worldW < 400.0f)
+            worldW = 400.0f;
+        if (worldH < 400.0f)
+            worldH = 400.0f;
+
+        // Reset arena in O(1) before rebuilding the tree.
+        arena.index = 0;
+        Node *root = create_node(&arena, (Rectangle){worldX, worldY, worldW, worldH});
+        if (root == NULL)
+        {
+            break;
+        }
         for (int i = 0; i < count; i++)
         {
-            insert_body(root, &bodies[i]);
+            insert_body(root, &bodies[i], &arena);
         }
 
         for (int i = 0; i < count; i++)
@@ -141,23 +179,24 @@ int main(void)
 
         ClearBackground(BLACK);
 
-        // all bodies with glow effect
+        // Draw bodies.
         for (int i = 0; i < count; i++)
         {
-            // Calculate size based on mass
             float radius = 3.0f + (float)sqrtf((float)bodies[i].mass) * 0.35f;
             Vector2 pos = {(float)bodies[i].position.x, (float)bodies[i].position.y};
 
-            // Calculate velocity magnitude for color intensity
             double speed = bodies[i].velocity.x * bodies[i].velocity.x +
                            bodies[i].velocity.y * bodies[i].velocity.y;
-            float brightness = fmin(1.0f, (float)(speed / 1000.0f)); // Normalize to 0-1
+            float brightness = fmin(1.0f, (float)(speed / 1000.0f));
 
-            // Create glowing effect with gradient
-            Color glowColor = bodies[i].color;
-            glowColor.a = 40; // transparent outer glow
-            DrawCircleGradient((int)pos.x, (int)pos.y, radius * 1.5f,
-                               (Color){0, 0, 0, 0}, glowColor);
+            if (bodies[i].mass >= 50.0)
+            {
+                // Keep glow for heavy bodies only; gradient draws are expensive.
+                Color glowColor = bodies[i].color;
+                glowColor.a = 40;
+                DrawCircleGradient((int)pos.x, (int)pos.y, radius * 1.5f,
+                                   (Color){0, 0, 0, 0}, glowColor);
+            }
 
             // Brighten color based on velocity
             Color coreColor = bodies[i].color;
@@ -176,7 +215,6 @@ int main(void)
         DrawText("Press +/- to adjust speed", 10, 85, 16, WHITE);
 
         EndDrawing();
-        free_tree(root);
     }
 
     CloseWindow();
