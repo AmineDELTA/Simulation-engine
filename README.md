@@ -2,6 +2,12 @@
 
 Real-time 2D galaxy collision simulation using a Barnes-Hut quadtree and an arena allocator for fast per-frame tree rebuilds.
 
+> [!NOTE]  
+> **Performance Note:** Please disregard the FPS counter in the recording. The framerate is throttled by the screen capture software and hardware constraints; the underlying simulation logic runs significantly faster.
+
+https://github.com/user-attachments/assets/95679dd0-ef0f-4b37-819c-9ff9b6489314
+
+
 ## Features
 
 - Two colliding galaxies with central massive bodies and orbiting particles
