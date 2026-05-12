@@ -49,7 +49,7 @@ Node *create_node(cArena *arena, Rectangle bounds)
     node->totalMass = 0.0;
     node->centerOfMass = (vector){0, 0};
     node->nw = node->ne = node->sw = node->se = NULL;
-    node->body = NULL;
+    node->bodyIndex = -1;
     return node;
 }
 
@@ -66,126 +66,98 @@ void split_node(Node *n, cArena *arena)
     n->se = create_node(arena, (Rectangle){x + w, y + h, w, h});
 }
 
-void insert_body(Node *tree, Body *body, cArena *arena)
+void insert_body(Node *tree, int bodyIndex, ParticleSystem *ps, cArena *arena)
 {
-    if (tree == NULL || body == NULL)
+    if (tree == NULL || ps == NULL || bodyIndex < 0 || bodyIndex >= ps->count)
     {
         return;
     }
 
-    Vector2 pos = {(float)body->position.x, (float)body->position.y};
+    Vector2 pos = {(float)ps->x[bodyIndex], (float)ps->y[bodyIndex]};
     if (!CheckCollisionPointRec(pos, tree->bounds))
     {
         return;
     }
 
-    if (tree->body == NULL && tree->nw == NULL) // empty leaf
+    if (tree->bodyIndex == -1 && tree->nw == NULL) // empty leaf
     {
-        tree->centerOfMass = body->position;
-        tree->totalMass = body->mass;
-        tree->body = body;
+        tree->centerOfMass = (vector){ps->x[bodyIndex], ps->y[bodyIndex]};
+        tree->totalMass = ps->mass[bodyIndex];
+        tree->bodyIndex = bodyIndex;
     }
     else if (tree->nw != NULL) // internal node
     {
         double old_m = tree->totalMass;
-        tree->totalMass += body->mass;
-        tree->centerOfMass.x = (tree->centerOfMass.x * old_m + body->position.x * body->mass) / tree->totalMass;
-        tree->centerOfMass.y = (tree->centerOfMass.y * old_m + body->position.y * body->mass) / tree->totalMass;
+        double new_m = ps->mass[bodyIndex];
+        tree->totalMass += new_m;
 
-        float midX = tree->bounds.x + tree->bounds.width / 2.0;
-        float midY = tree->bounds.y + tree->bounds.height / 2.0;
+        // Update Center of Mass
+        tree->centerOfMass.x = (tree->centerOfMass.x * old_m + ps->x[bodyIndex] * new_m) / tree->totalMass;
+        tree->centerOfMass.y = (tree->centerOfMass.y * old_m + ps->y[bodyIndex] * new_m) / tree->totalMass;
 
-        if (body->position.x < midX)
+        // Push index down to correct quadrant
+        float midX = tree->bounds.x + tree->bounds.width / 2.0f;
+        float midY = tree->bounds.y + tree->bounds.height / 2.0f;
+
+        if (ps->x[bodyIndex] < midX)
         {
-            if (body->position.y < midY)
-                insert_body(tree->nw, body, arena);
+            if (ps->y[bodyIndex] < midY)
+                insert_body(tree->nw, bodyIndex, ps, arena);
             else
-                insert_body(tree->sw, body, arena);
+                insert_body(tree->sw, bodyIndex, ps, arena);
         }
         else
         {
-            if (body->position.y < midY)
-                insert_body(tree->ne, body, arena);
+            if (ps->y[bodyIndex] < midY)
+                insert_body(tree->ne, bodyIndex, ps, arena);
             else
-                insert_body(tree->se, body, arena);
+                insert_body(tree->se, bodyIndex, ps, arena);
         }
     }
     else // occupied leaf
     {
-        Body *old_b = tree->body;
-
-        // If two bodies are effectively at the same position, do not keep subdividing forever.
-        if (fabs(old_b->position.x - body->position.x) < 1e-9 &&
-            fabs(old_b->position.y - body->position.y) < 1e-9)
+        if (tree->bodyIndex == bodyIndex)
         {
-            double total = old_b->mass + body->mass;
-            tree->centerOfMass.x = (old_b->position.x * old_b->mass + body->position.x * body->mass) / total;
-            tree->centerOfMass.y = (old_b->position.y * old_b->mass + body->position.y * body->mass) / total;
-            tree->totalMass = total;
-            tree->body = NULL;
-            return;
+            return; // same body, do nothing
         }
 
-        // Stop subdividing once the cell is too small to represent more detail.
-        if (tree->bounds.width <= MIN_NODE_SIZE || tree->bounds.height <= MIN_NODE_SIZE)
-        {
-            double total = old_b->mass + body->mass;
-            tree->centerOfMass.x = (old_b->position.x * old_b->mass + body->position.x * body->mass) / total;
-            tree->centerOfMass.y = (old_b->position.y * old_b->mass + body->position.y * body->mass) / total;
-            tree->totalMass = total;
-            tree->body = NULL;
-            return;
-        }
-
-        tree->body = NULL;
-
-        tree->totalMass = 0;
-        tree->centerOfMass = (vector){0, 0};
-
+        // Split the node and reinsert the existing body
+        int existingBodyIndex = tree->bodyIndex;
+        tree->bodyIndex = -1; // mark as internal node
         split_node(tree, arena);
-
-        if (tree->nw == NULL || tree->ne == NULL || tree->sw == NULL || tree->se == NULL)
-        {
-            // Arena exhausted: fallback to aggregate mass in this node.
-            double total = old_b->mass + body->mass;
-            tree->centerOfMass.x = (old_b->position.x * old_b->mass + body->position.x * body->mass) / total;
-            tree->centerOfMass.y = (old_b->position.y * old_b->mass + body->position.y * body->mass) / total;
-            tree->totalMass = total;
-            tree->body = NULL;
-            tree->nw = tree->ne = tree->sw = tree->se = NULL;
-            return;
-        }
-
-        insert_body(tree, old_b, arena);
-        insert_body(tree, body, arena);
+        insert_body(tree, existingBodyIndex, ps, arena);
+        insert_body(tree, bodyIndex, ps, arena);
     }
 }
 
-void calculate_force_from_tree(Node *tree, Body *body, double G, double theta)
+void calculate_force_from_tree(Node *tree, int targetIndex, ParticleSystem *ps, double G, double theta)
 {
-    if (tree == NULL || tree->totalMass == 0)
+    if (tree == NULL || tree->totalMass == 0 || tree->bodyIndex == targetIndex)
         return;
 
-    vector direction = subtract_vectors(tree->centerOfMass, body->position);
+    // Get vector from target particle to tree node center of mass
+    vector direction = {tree->centerOfMass.x - ps->x[targetIndex],
+                        tree->centerOfMass.y - ps->y[targetIndex]};
+
+    // Softening factor (+100.0) prevents division by zero
     double distSq = direction.x * direction.x + direction.y * direction.y + 100.0;
     double widthSq = (double)tree->bounds.width * (double)tree->bounds.width;
-    double thetaSq = theta * theta;
 
-    if (tree->body == body)
-        return;
-
-    if (widthSq < (thetaSq * distSq) || tree->nw == NULL)
+    // Barnes-Hut Criterion
+    if (widthSq < (theta * theta * distSq) || tree->nw == NULL)
     {
         double invDist = 1.0 / sqrt(distSq);
-        double forceMagnitude = (G * body->mass * tree->totalMass) / distSq;
-        vector force = multiply_vector_by_scalar(direction, forceMagnitude * invDist);
-        body->force = add_vectors(body->force, force);
+        double forceMag = (G * ps->mass[targetIndex] * tree->totalMass) / distSq;
+
+        // Accumulate into the flat force arrays
+        ps->fx[targetIndex] += direction.x * forceMag * invDist;
+        ps->fy[targetIndex] += direction.y * forceMag * invDist;
     }
     else
     {
-        calculate_force_from_tree(tree->nw, body, G, theta);
-        calculate_force_from_tree(tree->ne, body, G, theta);
-        calculate_force_from_tree(tree->sw, body, G, theta);
-        calculate_force_from_tree(tree->se, body, G, theta);
+        calculate_force_from_tree(tree->nw, targetIndex, ps, G, theta);
+        calculate_force_from_tree(tree->ne, targetIndex, ps, G, theta);
+        calculate_force_from_tree(tree->sw, targetIndex, ps, G, theta);
+        calculate_force_from_tree(tree->se, targetIndex, ps, G, theta);
     }
 }

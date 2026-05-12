@@ -29,12 +29,22 @@ typedef struct node
     Rectangle bounds;
     double totalMass;
     vector centerOfMass;
-    struct node *nw;
-    struct node *ne;
-    struct node *sw;
-    struct node *se;
-    Body *body;
+    struct node *nw, *ne, *sw, *se;
+    int bodyIndex; // -1 if the node is empty or internal
 } Node;
+
+typedef struct
+{
+    double *x;
+    double *y;
+    double *vx;
+    double *vy;
+    double *fx;
+    double *fy;
+    double *mass;
+    Color *color;
+    int count;
+} ParticleSystem;
 
 typedef struct
 {

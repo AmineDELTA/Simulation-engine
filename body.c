@@ -18,7 +18,17 @@ int main(void)
     }
 
     double G = 60.0;
-    static Body bodies[MAX_BODIES];
+    ParticleSystem ps;
+    ps.count = 3000;
+    ps.x = malloc(sizeof(double) * ps.count);
+    ps.y = malloc(sizeof(double) * ps.count);
+    ps.vx = malloc(sizeof(double) * ps.count);
+    ps.vy = malloc(sizeof(double) * ps.count);
+    ps.fx = malloc(sizeof(double) * ps.count);
+    ps.fy = malloc(sizeof(double) * ps.count);
+    ps.mass = malloc(sizeof(double) * ps.count);
+    ps.color = malloc(sizeof(Color) * ps.count);
+    Body *bodies = malloc(sizeof(Body) * ps.count);
     int count = 0;
 
     vector leftGalaxyCenter = {400, 600};
@@ -32,46 +42,53 @@ int main(void)
 
     double simulationSpeed = 1.0;
 
-    // === LEFT GALAXY (Blue) ===
+    // LEFT GALAXY
     for (int i = 0; i < particlesPerGalaxy; i++)
     {
         if (i == 0)
         {
             // Central mass moves only with galaxy drift.
-            bodies[count].position = leftGalaxyCenter;
-            bodies[count].velocity = leftGalaxyVelocity;
-            bodies[count].mass = centralMass;
-            bodies[count].color = BLUE;
+            ps.x[count] = leftGalaxyCenter.x;
+            ps.y[count] = leftGalaxyCenter.y;
+            ps.vx[count] = leftGalaxyVelocity.x;
+            ps.vy[count] = leftGalaxyVelocity.y;
+            ps.mass[count] = centralMass;
+            ps.color[count] = BLUE;
+            count++;
         }
         else
         {
             double angle = (double)GetRandomValue(0, 359) * (PI / 180.0);
             double radius = (double)GetRandomValue(80, 250);
 
-            bodies[count].position.x = leftGalaxyCenter.x + cos(angle) * radius;
-            bodies[count].position.y = leftGalaxyCenter.y + sin(angle) * radius;
+            ps.x[count] = leftGalaxyCenter.x + cos(angle) * radius;
+            ps.y[count] = leftGalaxyCenter.y + sin(angle) * radius;
 
             double orbitalSpeed = sqrt(G * centralMass / radius) * 0.95;
 
-            bodies[count].velocity.x = leftGalaxyVelocity.x + (-sin(angle) * orbitalSpeed);
-            bodies[count].velocity.y = leftGalaxyVelocity.y + (cos(angle) * orbitalSpeed);
+            ps.vx[count] = leftGalaxyVelocity.x + (-sin(angle) * orbitalSpeed);
+            ps.vy[count] = leftGalaxyVelocity.y + (cos(angle) * orbitalSpeed);
 
-            bodies[count].mass = (double)GetRandomValue(1, 3) * 0.1; // Very light
-            bodies[count].color = (Color){100, 150, 255, 255};
+            ps.mass[count] = (double)GetRandomValue(1, 3) * 0.1;
+            ps.color[count] = (Color){100, 150, 255, 255};
+            count++;
         }
         count++;
     }
 
-    // === RIGHT GALAXY (Red) ===
+    // RIGHT GALAXY
     for (int i = 0; i < particlesPerGalaxy; i++)
     {
         if (i == 0)
         {
             // Central mass moves only with galaxy drift.
-            bodies[count].position = rightGalaxyCenter;
-            bodies[count].velocity = rightGalaxyVelocity;
-            bodies[count].mass = centralMass;
-            bodies[count].color = RED;
+            ps.x[count] = rightGalaxyCenter.x;
+            ps.y[count] = rightGalaxyCenter.y;
+            ps.vx[count] = rightGalaxyVelocity.x;
+            ps.vy[count] = rightGalaxyVelocity.y;
+            ps.mass[count] = centralMass;
+            ps.color[count] = RED;
+            count++;
         }
         else
         {
@@ -79,16 +96,16 @@ int main(void)
             double angle = (double)GetRandomValue(0, 359) * (PI / 180.0);
             double radius = (double)GetRandomValue(80, 250);
 
-            bodies[count].position.x = rightGalaxyCenter.x + cos(angle) * radius;
-            bodies[count].position.y = rightGalaxyCenter.y + sin(angle) * radius;
+            ps.x[count] = rightGalaxyCenter.x + cos(angle) * radius;
+            ps.y[count] = rightGalaxyCenter.y + sin(angle) * radius;
 
             double orbitalSpeed = sqrt(G * centralMass / radius) * 0.95;
 
-            bodies[count].velocity.x = rightGalaxyVelocity.x + (-sin(angle) * orbitalSpeed);
-            bodies[count].velocity.y = rightGalaxyVelocity.y + (cos(angle) * orbitalSpeed);
+            ps.vx[count] = rightGalaxyVelocity.x + (-sin(angle) * orbitalSpeed);
+            ps.vy[count] = rightGalaxyVelocity.y + (cos(angle) * orbitalSpeed);
 
-            bodies[count].mass = (double)GetRandomValue(1, 3) * 0.1;
-            bodies[count].color = (Color){255, 100, 100, 255};
+            ps.mass[count] = (double)GetRandomValue(1, 3) * 0.1;
+            ps.color[count] = (Color){255, 150, 100, 255};
         }
         count++;
     }
