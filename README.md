@@ -2,6 +2,30 @@
 
 Real-time 2D galaxy collision simulation using a Barnes-Hut quadtree and an arena allocator for fast per-frame tree rebuilds.
 
+> [!NOTE]  
+> **Performance Note:** Please disregard the FPS counter in the recording. The framerate is throttled by the screen capture software and hardware constraints; the underlying simulation logic runs significantly faster.
+
+https://github.com/user-attachments/assets/95679dd0-ef0f-4b37-819c-9ff9b6489314
+
+To handle thousands of particles in real-time, the engine implements the Barnes-Hut algorithm. Instead of calculating forces between every individual pair of particles, an $O(n^2)$ operation, we use a Quadtree to recursively divide the 2D space. By grouping distant particles into internal nodes of the tree, the engine treats them as a single center of mass. This reduces the force calculation complexity to $O(n \log n)$, allowing for the simulation of over 9,000+ particles.
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="https://github.com/user-attachments/assets/7a2d3396-8f04-4c4f-8b6d-7230c8363ff3" width="450">
+      <br />
+      <sub>Spatial Decomposition</sub>
+    </td>
+    <td align="center">
+      <img src="https://github.com/user-attachments/assets/fab04553-4af3-4285-b29e-6667a493f460" width="450">
+      <br />
+      <sub>Quadtree Structure</sub>
+    </td>
+  </tr>
+</table>
+
+
+
 ## Features
 
 - Two colliding galaxies with central massive bodies and orbiting particles
