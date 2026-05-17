@@ -3,6 +3,7 @@
 #include <math.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #define MAX_BODIES 10000
 
 int main(void)
@@ -28,7 +29,8 @@ int main(void)
     ps.fy = malloc(sizeof(double) * ps.count);
     ps.mass = malloc(sizeof(double) * ps.count);
     ps.color = malloc(sizeof(Color) * ps.count);
-    Body *bodies = malloc(sizeof(Body) * ps.count);
+    // We'll use SOA arrays in `ps` as the primary storage.
+    // The old AOS `Body *bodies` is removed.
     int count = 0;
 
     vector leftGalaxyCenter = {400, 600};
@@ -73,7 +75,6 @@ int main(void)
             ps.color[count] = (Color){100, 150, 255, 255};
             count++;
         }
-        count++;
     }
 
     // RIGHT GALAXY
@@ -106,8 +107,8 @@ int main(void)
 
             ps.mass[count] = (double)GetRandomValue(1, 3) * 0.1;
             ps.color[count] = (Color){255, 150, 100, 255};
+            count++;
         }
-        count++;
     }
 
     SetTargetFPS(200);
@@ -132,24 +133,25 @@ int main(void)
 
         for (int i = 0; i < count; i++)
         {
-            bodies[i].force = (vector){0, 0};
+            ps.fx[i] = 0.0;
+            ps.fy[i] = 0.0;
         }
 
         // Tight bounds cut tree depth in empty space and reduce traversal work.
-        double minX = bodies[0].position.x;
-        double maxX = bodies[0].position.x;
-        double minY = bodies[0].position.y;
-        double maxY = bodies[0].position.y;
+        double minX = ps.x[0];
+        double maxX = ps.x[0];
+        double minY = ps.y[0];
+        double maxY = ps.y[0];
         for (int i = 1; i < count; i++)
         {
-            if (bodies[i].position.x < minX)
-                minX = bodies[i].position.x;
-            if (bodies[i].position.x > maxX)
-                maxX = bodies[i].position.x;
-            if (bodies[i].position.y < minY)
-                minY = bodies[i].position.y;
-            if (bodies[i].position.y > maxY)
-                maxY = bodies[i].position.y;
+            if (ps.x[i] < minX)
+                minX = ps.x[i];
+            if (ps.x[i] > maxX)
+                maxX = ps.x[i];
+            if (ps.y[i] < minY)
+                minY = ps.y[i];
+            if (ps.y[i] > maxY)
+                maxY = ps.y[i];
         }
 
         double padding = 200.0;
@@ -171,25 +173,24 @@ int main(void)
         }
         for (int i = 0; i < count; i++)
         {
-            insert_body(root, &bodies[i], &arena);
+            insert_body(root, i, &ps, &arena);
         }
 
         for (int i = 0; i < count; i++)
         {
-            calculate_force_from_tree(root, &bodies[i], G, 0.5);
+            calculate_force_from_tree(root, i, &ps, G, 0.5);
         }
 
         for (int i = 0; i < count; i++)
         {
+            double ax = ps.fx[i] / ps.mass[i];
+            double ay = ps.fy[i] / ps.mass[i];
 
-            vector accel = {bodies[i].force.x / bodies[i].mass,
-                            bodies[i].force.y / bodies[i].mass};
+            ps.vx[i] += ax * delta_time;
+            ps.vy[i] += ay * delta_time;
 
-            bodies[i].velocity.x += accel.x * delta_time;
-            bodies[i].velocity.y += accel.y * delta_time;
-
-            bodies[i].position.x += bodies[i].velocity.x * delta_time;
-            bodies[i].position.y += bodies[i].velocity.y * delta_time;
+            ps.x[i] += ps.vx[i] * delta_time;
+            ps.y[i] += ps.vy[i] * delta_time;
         }
 
         BeginDrawing();
@@ -199,29 +200,25 @@ int main(void)
         // Draw bodies.
         for (int i = 0; i < count; i++)
         {
-            float radius = 3.0f + (float)sqrtf((float)bodies[i].mass) * 0.35f;
-            Vector2 pos = {(float)bodies[i].position.x, (float)bodies[i].position.y};
+            float radius = 3.0f + (float)sqrtf((float)ps.mass[i]) * 0.35f;
+            Vector2 pos = {(float)ps.x[i], (float)ps.y[i]};
 
-            double speed = bodies[i].velocity.x * bodies[i].velocity.x +
-                           bodies[i].velocity.y * bodies[i].velocity.y;
+            double speed = ps.vx[i] * ps.vx[i] + ps.vy[i] * ps.vy[i];
             float brightness = fmin(1.0f, (float)(speed / 1000.0f));
 
-            if (bodies[i].mass >= 50.0)
+            if (ps.mass[i] >= 50.0)
             {
-                // Keep glow for heavy bodies only; gradient draws are expensive.
-                Color glowColor = bodies[i].color;
+                Color glowColor = ps.color[i];
                 glowColor.a = 40;
                 DrawCircleGradient((int)pos.x, (int)pos.y, radius * 1.5f,
                                    (Color){0, 0, 0, 0}, glowColor);
             }
 
-            // Brighten color based on velocity
-            Color coreColor = bodies[i].color;
+            Color coreColor = ps.color[i];
             coreColor.r = (unsigned char)fmin(255, coreColor.r + brightness * 80);
             coreColor.g = (unsigned char)fmin(255, coreColor.g + brightness * 80);
             coreColor.b = (unsigned char)fmin(255, coreColor.b + brightness * 80);
 
-            // Draw main body
             DrawCircleV(pos, radius, coreColor);
         }
 

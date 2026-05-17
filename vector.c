@@ -29,14 +29,6 @@ vector multiply_vector_by_scalar(vector v, double scalar)
     return result;
 }
 
-vector calculate_force(Body body1, Body body2)
-{
-    vector force;
-    force.x = 0.0;
-    force.y = 0.0;
-    return force;
-}
-
 Node *create_node(cArena *arena, Rectangle bounds)
 {
     if (arena == NULL || arena->index >= MAX_NODES)
@@ -125,6 +117,10 @@ void insert_body(Node *tree, int bodyIndex, ParticleSystem *ps, cArena *arena)
         int existingBodyIndex = tree->bodyIndex;
         tree->bodyIndex = -1; // mark as internal node
         split_node(tree, arena);
+        // Reset parent totals before reinserting so sums are correct
+        tree->totalMass = 0.0;
+        tree->centerOfMass = (vector){0.0, 0.0};
+
         insert_body(tree, existingBodyIndex, ps, arena);
         insert_body(tree, bodyIndex, ps, arena);
     }
@@ -139,8 +135,8 @@ void calculate_force_from_tree(Node *tree, int targetIndex, ParticleSystem *ps, 
     vector direction = {tree->centerOfMass.x - ps->x[targetIndex],
                         tree->centerOfMass.y - ps->y[targetIndex]};
 
-    // Softening factor (+100.0) prevents division by zero
-    double distSq = direction.x * direction.x + direction.y * direction.y + 100.0;
+    // Softening epsilon prevents division by zero / singularities
+    double distSq = direction.x * direction.x + direction.y * direction.y + SOFTENING_EPSILON;
     double widthSq = (double)tree->bounds.width * (double)tree->bounds.width;
 
     // Barnes-Hut Criterion

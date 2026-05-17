@@ -3,6 +3,8 @@
 #include <raylib.h>
 
 #define MAX_NODES 200000
+// Softening constant to avoid singularities in force calculations
+#define SOFTENING_EPSILON 100.0
 
 // Forward declarations
 struct node;
@@ -55,10 +57,9 @@ typedef struct
 vector add_vectors(vector v1, vector v2);
 vector subtract_vectors(vector v1, vector v2);
 vector multiply_vector_by_scalar(vector v, double scalar);
-vector calculate_force(Body body1, Body body2);
 Node *create_node(cArena *arena, Rectangle bounds);
-void insert_body(Node *tree, Body *body, cArena *arena);
+void insert_body(Node *tree, int bodyIndex, ParticleSystem *ps, cArena *arena);
 void split_node(Node *n, cArena *arena);
-void calculate_force_from_tree(Node *tree, Body *body, double G, double theta);
+void calculate_force_from_tree(Node *tree, int targetIndex, ParticleSystem *ps, double G, double theta);
 
 #endif
